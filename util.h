@@ -54,8 +54,14 @@ typedef struct CPU_State_Struct {
 
 	//ID_EX_latch
 	uint32_t ID_EX_NPC;
-	uint32_t ID_EX_REG1;
-	uint32_t ID_EX_REG2;
+	uint32_t ID_EX_RS;
+	uint32_t ID_EX_RT;
+	
+	uint32_t ID_EX_RD;
+	uint32_t ID_EX_SHAMT;
+	uint32_t ID_EX_FUNCT;
+	uint32_t ID_EX_OPCODE;
+
 	short ID_EX_IMM;
 	unsigned char ID_EX_DEST;
 
