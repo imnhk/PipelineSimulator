@@ -73,6 +73,9 @@ typedef struct CPU_State_Struct {
 	uint32_t EX_MEM_BR_TAKE;
 	unsigned char EX_MEM_DEST;
 
+	uint32_t EX_MEM_RD;
+
+
 	//MEM_WB_latch
 	uint32_t MEM_WB_NPC;
 	uint32_t MEM_WB_ALU_OUT;
