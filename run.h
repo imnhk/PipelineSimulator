@@ -117,9 +117,9 @@ void		process_instruction();
 
 /* Add any functions declarations that you require */
 /* Suggestions for some possible functions */
-//void		IF_Stage();
-//void		ID_Stage();
-//void		EX_Stage();
-//void		MEM_Stage();
-//void		WB_Stage();
+void		IF_Stage();
+void		ID_Stage();
+void		EX_Stage();
+void		MEM_Stage();
+void		WB_Stage();
 #endif

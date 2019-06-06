@@ -36,6 +36,8 @@
 #define MEM_STAGE	3
 #define WB_STAGE	4
 
+#pragma warning(disable:4996)
+
 /* You may add pipeline registers that you require */
 typedef struct CPU_State_Struct {
 	uint32_t PC;			/* program counter for the IF stage*/

@@ -39,4 +39,63 @@
       <Filter>소스 파일</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="sample_input\double_loop.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\example01.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\example02.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\example03.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\example04.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\example05.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\jal_test.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\leaf_example.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_input\various_inst.s">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\beq_test">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\double_loop">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\example01">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\example02">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\example03">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\example04">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\example05">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\jal_test">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\leaf_example">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="sample_output\various_inst">
+      <Filter>리소스 파일</Filter>
+    </None>
+  </ItemGroup>
 </Project>

@@ -133,6 +133,27 @@
     <ClCompile Include="sce212sim.c" />
     <ClCompile Include="util.c" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="sample_input\double_loop.s" />
+    <None Include="sample_input\example01.s" />
+    <None Include="sample_input\example02.s" />
+    <None Include="sample_input\example03.s" />
+    <None Include="sample_input\example04.s" />
+    <None Include="sample_input\example05.s" />
+    <None Include="sample_input\jal_test.s" />
+    <None Include="sample_input\leaf_example.s" />
+    <None Include="sample_input\various_inst.s" />
+    <None Include="sample_output\beq_test" />
+    <None Include="sample_output\double_loop" />
+    <None Include="sample_output\example01" />
+    <None Include="sample_output\example02" />
+    <None Include="sample_output\example03" />
+    <None Include="sample_output\example04" />
+    <None Include="sample_output\example05" />
+    <None Include="sample_output\jal_test" />
+    <None Include="sample_output\leaf_example" />
+    <None Include="sample_output\various_inst" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
