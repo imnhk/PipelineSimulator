@@ -24,6 +24,18 @@ instruction* get_inst_info(uint32_t pc) {
     return &INST_INFO[(pc - MEM_TEXT_START) >> 2];
 }
 
+// Stall: Set IF_ID instruction register to 000...000 (SLL $0 $0 0)
+void stall() {
+	instruction nop;
+	nop.opcode = 0;
+	nop.value = 0;
+	CURRENT_STATE.IF_ID_INST = &nop;
+	CURRENT_STATE.IF_ID_NPC = 0;
+	CURRENT_STATE.PIPE[IF_STAGE] = 0;
+	return;
+}
+int stallFlag = 0;
+
 /***************************************************************/
 /*                                                             */
 /* Procedure: process_instruction                              */
@@ -35,20 +47,16 @@ void process_instruction()
 {
 	/** Implement this function */
 
-
+	if (stallFlag) {
+		stall();
+		stallFlag = 0;
+	}
+	
 	WB_Stage();
-	
 	MEM_Stage();
-	
 	EX_Stage();
-
 	ID_Stage();
-
 	IF_Stage();
-
-
-	CURRENT_STATE.PC += 4;
-
 
 	/*
 	if (OPCODE(instr) == 0x0) {
@@ -171,22 +179,41 @@ void process_instruction()
 
 // Instruction fetch from memory 
 void IF_Stage() {
+	if (CURRENT_STATE.REGS_LOCK[IF_STAGE]) {
+		// IF stage is locked
+		CURRENT_STATE.PIPE[IF_STAGE] = 0;
+		return;
+	}
+	//CURRENT_STATE.REGS_LOCK[IF_STAGE] = 1; // LOCK
+
+
 	CURRENT_STATE.PIPE[IF_STAGE] = CURRENT_STATE.PC;
 
 	CURRENT_STATE.IF_ID_INST = get_inst_info(CURRENT_STATE.PC);
 
-	CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
+	CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PC;
+	CURRENT_STATE.PC += 4;
+
 }
 
 // Instruction decode & register read 
 void ID_Stage() {
 	if (!CURRENT_STATE.IF_ID_NPC) return;
+	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]) {
+		// ID stage is locked
+		CURRENT_STATE.PIPE[ID_STAGE] = 0;
+
+		// Flush ID_EX registers
+		CURRENT_STATE.ID_EX_RS = 0;
+		return;
+	}
+	//CURRENT_STATE.REGS_LOCK[ID_STAGE] = 1; // LOCK
+
 
 	CURRENT_STATE.PIPE[ID_STAGE] = CURRENT_STATE.IF_ID_NPC;
 
 	// Decode this instruction
 	instruction* instr = CURRENT_STATE.IF_ID_INST;
-
 	CURRENT_STATE.ID_EX_OPCODE = OPCODE(instr);
 
 	if (OPCODE(instr) == 0x0) {
@@ -199,19 +226,22 @@ void ID_Stage() {
 	}
 	else {
 		switch (OPCODE(instr)) {
-
 			// TYPE I
 		case 0x9:		//(0x001001)ADDIU
 		case 0xc:		//(0x001100)ANDI
 		case 0xf:		//(0x001111)LUI, Load Upper Imm.
 		case 0xd:		//(0x001101)ORI
 		case 0xb:		//(0x001011)SLTIU
-		case 0x23:		//(0x100011)LW
-		case 0x2b:		//(0x101011)SW
 		case 0x4:		//(0x000100)BEQ
 		case 0x5:		//(0x000101)BNE
-
 			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
+			CURRENT_STATE.ID_EX_RT = RT(instr);
+			CURRENT_STATE.ID_EX_IMM = IMM(instr);
+			break;
+
+		case 0x23:		//(0x100011)LW
+		case 0x2b:		//(0x101011)SW
+			CURRENT_STATE.ID_EX_RS = RS(instr);
 			CURRENT_STATE.ID_EX_RT = RT(instr);
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
 			break;
@@ -219,13 +249,13 @@ void ID_Stage() {
 			// TYPE J
 		case 0x2:		//J
 		case 0x3:		//JAL
-			CURRENT_STATE.ID_EX_DEST = TARGET(instr) * 4;
+			CURRENT_STATE.ID_EX_DEST = TARGET(instr);
+			stallFlag = 1;
 			break;
 
 		default:
-			//printf("ERROR: Check process_instruction() TYPE I,, J opcode\n");
-			RUN_BIT = FALSE;
-			CURRENT_STATE.PC -= 4;
+			//RUN_BIT = FALSE;
+			break;
 		}
 	}
 	
@@ -235,6 +265,12 @@ void ID_Stage() {
 // Execute operation or calculate address 
 void EX_Stage() {
 	if (!CURRENT_STATE.ID_EX_NPC) return;
+	if (CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
+		// EX_STAGE is locked
+		CURRENT_STATE.PIPE[EX_STAGE] = 0;
+		return;
+	}
+	//CURRENT_STATE.REGS_LOCK[EX_STAGE] = 1; // LOCK
 
 	CURRENT_STATE.PIPE[EX_STAGE] = CURRENT_STATE.ID_EX_NPC;
 
@@ -248,7 +284,7 @@ void EX_Stage() {
 
 		switch (CURRENT_STATE.ID_EX_FUNCT) {
 		case 0x21:	// ADD U
-			//printf("ADDU :$%d = $%d + $%d \n", RD(instr), RS(instr), RT(instr));
+			//printf("ADDU :$%d = $%d + $%d \n", CURRENT_STATE.EX_MEM_RD, CURRENT_STATE.ID_EX_RS, CURRENT_STATE.ID_EX_RT);
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_RT;
 			break;
 		case 0x24:	// AND
@@ -268,12 +304,12 @@ void EX_Stage() {
 			CURRENT_STATE.EX_MEM_ALU_OUT = (CURRENT_STATE.ID_EX_RS < CURRENT_STATE.ID_EX_RT) ? 1 : 0;
 			break;
 		case 0x00:	// SLL
-			//printf("SLL :$%d = $%d << ($%d)shamt \n", RD(instr), RT(instr), SHAMT(instr));
-			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS << CURRENT_STATE.ID_EX_RT;
+			//printf("SLL :$%d = $%d << ($%d)shamt \n");
+			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS << CURRENT_STATE.ID_EX_SHAMT;
 			break;
 		case 0x02:	// SRL
 			//printf("SRL :$%d = $%d >> ($%d)shamt \n", RD(instr), RT(instr), SHAMT(instr));
-			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS >> CURRENT_STATE.ID_EX_RT;
+			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS >> CURRENT_STATE.ID_EX_SHAMT;
 			break;
 		case 0x23:	// SUB U
 			//printf("SUBU :$%d = $%d - $%d \n", RD(instr), RS(instr), RT(instr));
@@ -281,21 +317,21 @@ void EX_Stage() {
 			break;
 		case 0x08:	//JR
 			//printf("JR : PC = 0x%x \n", CURRENT_STATE.REGS[RS(instr)]);
-			CURRENT_STATE.EX_MEM_BR_TARGET = CURRENT_STATE.ID_EX_RS;
+			CURRENT_STATE.JUMP_PC = CURRENT_STATE.ID_EX_RS;
 			// BRANCH!!!
 			break;
 
 		default:
 			//printf("ERROR: Check process_instruction() TYPE R func_code\m");
-			RUN_BIT = FALSE;
-			//CURRENT_STATE.PC -= 4;
+			//RUN_BIT = FALSE;
+			break;
 		}
 	}
 	else {
 		uint32_t PC_addr;
-		switch (CURRENT_STATE.ID_EX_OPCODE) {
-			CURRENT_STATE.EX_MEM_RD = CURRENT_STATE.ID_EX_RT; // pass RT to WB
+		CURRENT_STATE.EX_MEM_RD = CURRENT_STATE.ID_EX_RT; // pass RT to WB
 
+		switch (CURRENT_STATE.ID_EX_OPCODE) {
 			// TYPE I
 		case 0x9:		//(0x001001)ADDIU
 			//printf("ADDIU :$%d = $%d + %d \n", RT(instr), RS(instr), IMM(instr));
@@ -347,21 +383,21 @@ void EX_Stage() {
 			//printf("J :PC = PC[31:28] strcat [0x%x(imm) * 4] \n", TARGET(instr));
 			PC_addr = CURRENT_STATE.ID_EX_NPC;
 			PC_addr = PC_addr & 0xf0000000; //PC[31:28]
-			CURRENT_STATE.EX_MEM_BR_TARGET = PC_addr + CURRENT_STATE.ID_EX_DEST;
+			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4;
 
 			break;
 		case 0x3:		//JAL
 			//printf("JAL :R[31]=PC+4, J to 0x%x(imm)*4 \n", TARGET(instr));
+
 			PC_addr = CURRENT_STATE.ID_EX_NPC;
 			PC_addr = PC_addr & 0xf0000000; //PC[31:28]
-			CURRENT_STATE.EX_MEM_BR_TARGET = PC_addr + CURRENT_STATE.ID_EX_DEST;
+			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START +CURRENT_STATE.ID_EX_DEST * 4;
 			break;
 
 		default:
 			//printf("ERROR: Check process_instruction() TYPE I,, J opcode\n");
-			RUN_BIT = FALSE;
-			//CURRENT_STATE.PC -= 4;
-
+			//RUN_BIT = FALSE;
+			break;
 		}
 	}
 
@@ -372,6 +408,13 @@ void EX_Stage() {
 // Access memory operand 
 void MEM_Stage() {
 	if (!CURRENT_STATE.EX_MEM_NPC) return;
+	if (CURRENT_STATE.REGS_LOCK[MEM_STAGE]) {
+		// MEM_STAGE is locked
+		CURRENT_STATE.PIPE[MEM_STAGE] = 0;
+		return;
+	}
+	//CURRENT_STATE.REGS_LOCK[MEM_STAGE] = 1; // LOCK
+
 
 	CURRENT_STATE.PIPE[MEM_STAGE] = CURRENT_STATE.EX_MEM_NPC;
 
@@ -396,18 +439,17 @@ void MEM_Stage() {
 			CURRENT_STATE.MEM_WB_ALU_OUT = CURRENT_STATE.EX_MEM_ALU_OUT;
 			break;
 		case 0x08:	//JR
-			CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
+			CURRENT_STATE.PC = CURRENT_STATE.JUMP_PC;
 			// BRANCH!!!
 			break;
 
 		default:
-			//printf("ERROR: Check process_instruction() TYPE R func_code\m");
-			RUN_BIT = FALSE;
-			CURRENT_STATE.PC -= 4;
+			//RUN_BIT = FALSE;
+			break;
 		}
 	}
 	else {
-		CURRENT_STATE.MEM_WB_RD = CURRENT_STATE.EX_MEM_RD; // pass RD to WB
+		CURRENT_STATE.MEM_WB_RD = CURRENT_STATE.EX_MEM_RD; // pass RT to WB
 
 		switch (CURRENT_STATE.EX_MEM_OPCODE) {
 			// TYPE I
@@ -434,23 +476,21 @@ void MEM_Stage() {
 		case 0x4:		//(0x000100)BEQ
 		case 0x5:		//(0x000101)BNE
 			CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
-
 			break;
 
 			// TYPE J
 		case 0x2:		//J
-			CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
+			CURRENT_STATE.PC = CURRENT_STATE.JUMP_PC;
 
 			break;
 		case 0x3:		//JAL
 			CURRENT_STATE.REGS[31] = CURRENT_STATE.EX_MEM_NPC + 4;
-			CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
+			CURRENT_STATE.PC = CURRENT_STATE.JUMP_PC;
 			break;
 
 		default:
-			//printf("ERROR: Check process_instruction() TYPE I,, J opcode\n");
-			RUN_BIT = FALSE;
-			CURRENT_STATE.PC -= 4;
+			//RUN_BIT = FALSE;
+			break;
 		}
 	}
 	CURRENT_STATE.MEM_WB_NPC = CURRENT_STATE.PIPE[MEM_STAGE];
@@ -459,6 +499,12 @@ void MEM_Stage() {
 // Write result back to register
 void WB_Stage() {
 	if (!CURRENT_STATE.MEM_WB_NPC) return;
+	if (CURRENT_STATE.REGS_LOCK[WB_STAGE]) {
+		// WB_STAGE is locked
+		CURRENT_STATE.PIPE[WB_STAGE] = 0;
+		return;
+	}
+	//CURRENT_STATE.REGS_LOCK[WB_STAGE] = 1; // LOCK
 
 	CURRENT_STATE.PIPE[WB_STAGE] = CURRENT_STATE.MEM_WB_NPC;
 
@@ -475,6 +521,7 @@ void WB_Stage() {
 		case 0x02:	// SRL
 		case 0x23:	// SUB U
 			CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_RD] = CURRENT_STATE.MEM_WB_ALU_OUT;
+			printf("WB Type R: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_ALU_OUT);
 			break;
 		case 0x08:	//JR
 			// empty
@@ -495,10 +542,12 @@ void WB_Stage() {
 		case 0xf:		//(0x001111)LUI, Load Upper Imm.
 			// IMM의 앞 비트 부분. Jump에 쓸 메모리 주소
 			CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_RD] = CURRENT_STATE.MEM_WB_ALU_OUT;
+			printf("WB Type I: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_ALU_OUT);
 			break;
 
 		case 0x23:		//(0x100011)LW
 			CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_RD] = CURRENT_STATE.MEM_WB_MEM_OUT;
+			printf("(WB) LW: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_MEM_OUT);
 
 			break;
 		case 0x2b:		//(0x101011)SW
@@ -511,11 +560,11 @@ void WB_Stage() {
 			break;
 
 		default:
-			//printf("ERROR: Check process_instruction() TYPE I,, J opcode\n");
-			RUN_BIT = FALSE;
-			CURRENT_STATE.PC -= 4;
+			//RUN_BIT = FALSE;
+			break;
 		}
 	}
 
 	INSTRUCTION_COUNT++; // Need to move this
 }
+
