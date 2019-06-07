@@ -84,6 +84,9 @@ typedef struct CPU_State_Struct {
 	uint32_t MEM_WB_BR_TAKE;
 	unsigned char MEM_WB_DEST;
 
+	uint32_t MEM_WB_OPCODE;
+	uint32_t MEM_WB_RD;
+
 	//Forwarding
 	unsigned char EX_MEM_FORWARD_REG;
 	unsigned char MEM_WB_FORWARD_REG;
