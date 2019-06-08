@@ -207,6 +207,7 @@ void ID_Stage() {
 		CURRENT_STATE.ID_EX_NPC = 0;
 		return;
 	}
+
 	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]) {
 		// ID stage is locked
 		CURRENT_STATE.PIPE[ID_STAGE] = 0;
@@ -219,6 +220,7 @@ void ID_Stage() {
 
 	CURRENT_STATE.PIPE[ID_STAGE] = CURRENT_STATE.IF_ID_NPC;
 
+
 	// Decode this instruction
 	instruction* instr = CURRENT_STATE.IF_ID_INST;
 	CURRENT_STATE.ID_EX_OPCODE = OPCODE(instr);
@@ -230,6 +232,16 @@ void ID_Stage() {
 		CURRENT_STATE.ID_EX_RD = RD(instr);
 		CURRENT_STATE.ID_EX_SHAMT = SHAMT(instr);
 		CURRENT_STATE.ID_EX_FUNCT = FUNC(instr);
+
+		// Type-R Forwarding. Compare with ex-cycle EX stage.
+		if (CURRENT_STATE.EX_MEM_RD == CURRENT_STATE.ID_EX_RS) {
+			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
+			printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+		}
+		if (CURRENT_STATE.EX_MEM_RD == CURRENT_STATE.ID_EX_RT) {
+			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
+			printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+		}
 
 		// NOP. ADDU 0 0 0.
 		if (FUNC(instr) == 0x21) {
@@ -249,16 +261,20 @@ void ID_Stage() {
 		case 0xb:		//(0x001011)SLTIU
 		case 0x4:		//(0x000100)BEQ
 		case 0x5:		//(0x000101)BNE
-			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
-			CURRENT_STATE.ID_EX_RT = RT(instr);
-			CURRENT_STATE.ID_EX_IMM = IMM(instr);
-			break;
-
 		case 0x23:		//(0x100011)LW
 		case 0x2b:		//(0x101011)SW
 			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
 			CURRENT_STATE.ID_EX_RT = RT(instr);
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
+
+			// Type-I Forwarding. Compare with ex-cycle EX stage.
+			printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
+
+			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
+				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
+				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			}
+
 			break;
 
 			// TYPE J
@@ -296,6 +312,7 @@ void EX_Stage() {
 
 	CURRENT_STATE.EX_MEM_OPCODE = CURRENT_STATE.ID_EX_OPCODE;
 	CURRENT_STATE.EX_MEM_FUNCT = CURRENT_STATE.ID_EX_FUNCT;
+
 
 	// Execute operation with ID_EX registers
 
@@ -475,7 +492,6 @@ void MEM_Stage() {
 
 		case 0x23:		//(0x100011)LW
 			// 메모리를 읽어 그 값을 MEM_OUT에
-			printf("MEM: aluout: 0x%x \n", CURRENT_STATE.EX_MEM_ALU_OUT);
 			CURRENT_STATE.MEM_WB_MEM_OUT = mem_read_32(CURRENT_STATE.EX_MEM_ALU_OUT);
 
 			break;
