@@ -197,8 +197,16 @@ void IF_Stage() {
 }
 
 // Instruction decode & register read 
+
+// addu 0 0 0 >> nop, create bubble
 void ID_Stage() {
-	if (!CURRENT_STATE.IF_ID_NPC) return;
+	if (!CURRENT_STATE.IF_ID_NPC) {
+		// 가져온 게 nop일 때
+		// 그대로 0을 전달해 준다
+		CURRENT_STATE.PIPE[ID_STAGE] = 0;
+		CURRENT_STATE.ID_EX_NPC = 0;
+		return;
+	}
 	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]) {
 		// ID stage is locked
 		CURRENT_STATE.PIPE[ID_STAGE] = 0;
@@ -208,7 +216,6 @@ void ID_Stage() {
 		return;
 	}
 	//CURRENT_STATE.REGS_LOCK[ID_STAGE] = 1; // LOCK
-
 
 	CURRENT_STATE.PIPE[ID_STAGE] = CURRENT_STATE.IF_ID_NPC;
 
@@ -223,6 +230,14 @@ void ID_Stage() {
 		CURRENT_STATE.ID_EX_RD = RD(instr);
 		CURRENT_STATE.ID_EX_SHAMT = SHAMT(instr);
 		CURRENT_STATE.ID_EX_FUNCT = FUNC(instr);
+
+		// NOP. ADDU 0 0 0.
+		if (FUNC(instr) == 0x21) {
+			if (RS(instr) == 0 && RT(instr) == 0 && RD(instr) == 0) {
+				// Its bubble. Clear ID_EX buffer
+				CURRENT_STATE.PIPE[ID_STAGE] = 0;
+			}
+		}
 	}
 	else {
 		switch (OPCODE(instr)) {
@@ -241,7 +256,7 @@ void ID_Stage() {
 
 		case 0x23:		//(0x100011)LW
 		case 0x2b:		//(0x101011)SW
-			CURRENT_STATE.ID_EX_RS = RS(instr);
+			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
 			CURRENT_STATE.ID_EX_RT = RT(instr);
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
 			break;
@@ -250,7 +265,6 @@ void ID_Stage() {
 		case 0x2:		//J
 		case 0x3:		//JAL
 			CURRENT_STATE.ID_EX_DEST = TARGET(instr);
-			stallFlag = 1;
 			break;
 
 		default:
@@ -258,13 +272,19 @@ void ID_Stage() {
 			break;
 		}
 	}
-	
 	CURRENT_STATE.ID_EX_NPC = CURRENT_STATE.PIPE[ID_STAGE];
+
 }
 
 // Execute operation or calculate address 
 void EX_Stage() {
-	if (!CURRENT_STATE.ID_EX_NPC) return;
+	if (!CURRENT_STATE.ID_EX_NPC) {
+		// 가져온 게 nop일 때
+		// 그대로 0을 전달해 준다
+		CURRENT_STATE.PIPE[EX_STAGE] = 0;
+		CURRENT_STATE.EX_MEM_NPC = 0;
+		return;
+	}
 	if (CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
 		// EX_STAGE is locked
 		CURRENT_STATE.PIPE[EX_STAGE] = 0;
@@ -275,6 +295,7 @@ void EX_Stage() {
 	CURRENT_STATE.PIPE[EX_STAGE] = CURRENT_STATE.ID_EX_NPC;
 
 	CURRENT_STATE.EX_MEM_OPCODE = CURRENT_STATE.ID_EX_OPCODE;
+	CURRENT_STATE.EX_MEM_FUNCT = CURRENT_STATE.ID_EX_FUNCT;
 
 	// Execute operation with ID_EX registers
 
@@ -284,45 +305,34 @@ void EX_Stage() {
 
 		switch (CURRENT_STATE.ID_EX_FUNCT) {
 		case 0x21:	// ADD U
-			//printf("ADDU :$%d = $%d + $%d \n", CURRENT_STATE.EX_MEM_RD, CURRENT_STATE.ID_EX_RS, CURRENT_STATE.ID_EX_RT);
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_RT;
 			break;
 		case 0x24:	// AND
-			//printf("AND :$%d = $%d & $%d \n", RD(instr), RS(instr), RT(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS & CURRENT_STATE.ID_EX_RT;
 			break;
 		case 0x27:	// NOR
-			//printf("NOR :$%d = ~($%d | $%d) \n", RD(instr), RS(instr), RT(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = ~(CURRENT_STATE.ID_EX_RS | CURRENT_STATE.ID_EX_RT);
 			break;
 		case 0x25:	// OR
-			//printf("OR :$%d = $%d | $%d \n", RD(instr), RS(instr), RT(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS | CURRENT_STATE.ID_EX_RT;
 			break;
 		case 0x2b:	// SLT U
-			//printf("SLTU :$%d = ($%d < $%d) ? 1:0 \n", RD(instr), RS(instr), RT(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = (CURRENT_STATE.ID_EX_RS < CURRENT_STATE.ID_EX_RT) ? 1 : 0;
 			break;
 		case 0x00:	// SLL
-			//printf("SLL :$%d = $%d << ($%d)shamt \n");
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS << CURRENT_STATE.ID_EX_SHAMT;
 			break;
 		case 0x02:	// SRL
-			//printf("SRL :$%d = $%d >> ($%d)shamt \n", RD(instr), RT(instr), SHAMT(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS >> CURRENT_STATE.ID_EX_SHAMT;
 			break;
 		case 0x23:	// SUB U
-			//printf("SUBU :$%d = $%d - $%d \n", RD(instr), RS(instr), RT(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS - CURRENT_STATE.ID_EX_RT;
 			break;
 		case 0x08:	//JR
 			//printf("JR : PC = 0x%x \n", CURRENT_STATE.REGS[RS(instr)]);
 			CURRENT_STATE.JUMP_PC = CURRENT_STATE.ID_EX_RS;
-			// BRANCH!!!
 			break;
-
 		default:
-			//printf("ERROR: Check process_instruction() TYPE R func_code\m");
 			//RUN_BIT = FALSE;
 			break;
 		}
@@ -334,19 +344,15 @@ void EX_Stage() {
 		switch (CURRENT_STATE.ID_EX_OPCODE) {
 			// TYPE I
 		case 0x9:		//(0x001001)ADDIU
-			//printf("ADDIU :$%d = $%d + %d \n", RT(instr), RS(instr), IMM(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_IMM;
 			break;
 		case 0xc:		//(0x001100)ANDI
-			//printf("ANDI :$%d = $%d & $%d \n", RD(instr), RS(instr), IMM(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS & CURRENT_STATE.ID_EX_IMM;
 			break;
 		case 0xd:		//(0x001101)ORI
-			//printf("ORI :%d = %d or %d \n", RT(instr), RS(instr), IMM(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS | CURRENT_STATE.ID_EX_IMM;
 			break;
 		case 0xb:		//(0x001011)SLTIU
-			//printf("SLTIU :$%d = ($%d < $%d) ? 1:0 \n", RT(instr), RS(instr), IMM(instr));
 			CURRENT_STATE.EX_MEM_ALU_OUT = (CURRENT_STATE.ID_EX_RS < CURRENT_STATE.ID_EX_IMM) ? 1 : 0;
 			break;
 		case 0xf:		//(0x001111)LUI, Load Upper Imm.
@@ -360,6 +366,7 @@ void EX_Stage() {
 			//CURRENT_STATE.REGS[RT(instr)] = mem_read_32(CURRENT_STATE.REGS[RS(instr)] + IMM(instr));
 			// 접근할 메모리 주소(읽기)
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_IMM;
+			printf("EX: RS %d, IMM %x\n", CURRENT_STATE.ID_EX_RS, CURRENT_STATE.ID_EX_IMM);
 			break;
 		case 0x2b:		//(0x101011)SW
 			//printf("SW :M[0x%8x + %d] = $%d \n", CURRENT_STATE.REGS[RS(instr)], IMM(instr), RT(instr));
@@ -368,12 +375,10 @@ void EX_Stage() {
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_IMM;
 			break;
 		case 0x4:		//(0x000100)BEQ
-			//printf("BEQ :if($%d == $%d) goto PC + %d(*4) \n", RS(instr), RT(instr), IMM(instr));
 			if (CURRENT_STATE.ID_EX_RS == CURRENT_STATE.ID_EX_RT)
 				CURRENT_STATE.EX_MEM_BR_TARGET += 4 * CURRENT_STATE.ID_EX_IMM;
 			break;
 		case 0x5:		//(0x000101)BNE
-			//printf("BNE :if($%d != $%d) goto PC + %d(*4) \n", RS(instr), RT(instr), IMM(instr));
 			if (CURRENT_STATE.ID_EX_RS != CURRENT_STATE.ID_EX_RT)
 				CURRENT_STATE.EX_MEM_BR_TARGET += 4 * CURRENT_STATE.ID_EX_IMM;
 			break;
@@ -383,15 +388,14 @@ void EX_Stage() {
 			//printf("J :PC = PC[31:28] strcat [0x%x(imm) * 4] \n", TARGET(instr));
 			PC_addr = CURRENT_STATE.ID_EX_NPC;
 			PC_addr = PC_addr & 0xf0000000; //PC[31:28]
-			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4;
+			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4 + 4;
 
 			break;
 		case 0x3:		//JAL
 			//printf("JAL :R[31]=PC+4, J to 0x%x(imm)*4 \n", TARGET(instr));
-
 			PC_addr = CURRENT_STATE.ID_EX_NPC;
 			PC_addr = PC_addr & 0xf0000000; //PC[31:28]
-			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START +CURRENT_STATE.ID_EX_DEST * 4;
+			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4 + 4;
 			break;
 
 		default:
@@ -407,7 +411,13 @@ void EX_Stage() {
 
 // Access memory operand 
 void MEM_Stage() {
-	if (!CURRENT_STATE.EX_MEM_NPC) return;
+	if (!CURRENT_STATE.EX_MEM_NPC) {
+		// 가져온 게 nop일 때
+		// 그대로 0을 전달해 준다
+		CURRENT_STATE.PIPE[MEM_STAGE] = 0;
+		CURRENT_STATE.MEM_WB_NPC = 0;
+		return;
+	}
 	if (CURRENT_STATE.REGS_LOCK[MEM_STAGE]) {
 		// MEM_STAGE is locked
 		CURRENT_STATE.PIPE[MEM_STAGE] = 0;
@@ -419,6 +429,7 @@ void MEM_Stage() {
 	CURRENT_STATE.PIPE[MEM_STAGE] = CURRENT_STATE.EX_MEM_NPC;
 
 	CURRENT_STATE.MEM_WB_OPCODE = CURRENT_STATE.EX_MEM_OPCODE;
+	CURRENT_STATE.MEM_WB_FUNCT = CURRENT_STATE.EX_MEM_FUNCT;
 
 	
 	// Access Memory data
@@ -427,7 +438,7 @@ void MEM_Stage() {
 		// TYPE R
 		CURRENT_STATE.MEM_WB_RD = CURRENT_STATE.EX_MEM_RD; // pass RD to WB
 
-		switch (CURRENT_STATE.ID_EX_FUNCT) { // 고쳐야 함
+		switch (CURRENT_STATE.EX_MEM_FUNCT) { // 고쳐야 함
 		case 0x21:	// ADD U
 		case 0x24:	// AND
 		case 0x27:	// NOR
@@ -464,6 +475,7 @@ void MEM_Stage() {
 
 		case 0x23:		//(0x100011)LW
 			// 메모리를 읽어 그 값을 MEM_OUT에
+			printf("MEM: aluout: 0x%x \n", CURRENT_STATE.EX_MEM_ALU_OUT);
 			CURRENT_STATE.MEM_WB_MEM_OUT = mem_read_32(CURRENT_STATE.EX_MEM_ALU_OUT);
 
 			break;
@@ -484,7 +496,7 @@ void MEM_Stage() {
 
 			break;
 		case 0x3:		//JAL
-			CURRENT_STATE.REGS[31] = CURRENT_STATE.EX_MEM_NPC + 4;
+			CURRENT_STATE.REGS[31] = CURRENT_STATE.EX_MEM_NPC;
 			CURRENT_STATE.PC = CURRENT_STATE.JUMP_PC;
 			break;
 
@@ -498,7 +510,10 @@ void MEM_Stage() {
 
 // Write result back to register
 void WB_Stage() {
-	if (!CURRENT_STATE.MEM_WB_NPC) return;
+	if (!CURRENT_STATE.MEM_WB_NPC) {
+		CURRENT_STATE.PIPE[WB_STAGE] = 0;
+		return;
+	}
 	if (CURRENT_STATE.REGS_LOCK[WB_STAGE]) {
 		// WB_STAGE is locked
 		CURRENT_STATE.PIPE[WB_STAGE] = 0;
@@ -553,12 +568,10 @@ void WB_Stage() {
 		case 0x2b:		//(0x101011)SW
 		case 0x4:		//(0x000100)BEQ
 		case 0x5:		//(0x000101)BNE
-
 		case 0x2:		//J
 		case 0x3:		//JAL
 			// Nothing to do with registers
 			break;
-
 		default:
 			//RUN_BIT = FALSE;
 			break;
