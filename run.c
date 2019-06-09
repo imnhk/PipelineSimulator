@@ -29,6 +29,7 @@ instruction* get_inst_info(uint32_t pc) {
 
 // Stall IF, ID for 1 cycle for LW forwarding
 int lwFlag = FALSE;
+int lwMemFlag = FALSE;
 void LWstall(int flag) {
 	if (!flag)
 		return;
@@ -41,6 +42,7 @@ void LWstall(int flag) {
 	// Create bubble at EX_MEM buffer
 
 	lwFlag = FALSE;
+	lwMemFlag = TRUE;
 	return;
 }
 
@@ -196,7 +198,7 @@ void IF_Stage() {
 		// 명령어 끝 확인(임시) 가상환경에서는 안 될 수도 있음
 		FETCH_BIT = FALSE;
 		if (CURRENT_STATE.PIPE[MEM_STAGE] == 0) {
-			// 파이프라인이 비워질 예정. 실행 종료.
+			// Pipeline to be empty
 			RUN_BIT = FALSE;
 		}
 	}
@@ -217,19 +219,16 @@ void IF_Stage() {
 
 // Instruction decode & register read 
 
-// addu 0 0 0 >> nop, create bubble
 void ID_Stage() {
 	// ID stage is locked
 	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]) {
 		CURRENT_STATE.REGS_LOCK[ID_STAGE] = FALSE;
 		CURRENT_STATE.ID_EX_NPC = CURRENT_STATE.PIPE[ID_STAGE];
-
 		return;
 	}
 	
 	if (!CURRENT_STATE.IF_ID_NPC) {
-		// 가져온 게 nop일 때
-		// 그대로 0을 전달해 준다
+		// pass NOP to next stage
 		CURRENT_STATE.PIPE[ID_STAGE] = 0;
 		CURRENT_STATE.ID_EX_NPC = 0;
 		return;
@@ -240,7 +239,6 @@ void ID_Stage() {
 	// Decode this instruction
 	instruction* instr = CURRENT_STATE.IF_ID_INST;
 	CURRENT_STATE.ID_EX_OPCODE = OPCODE(instr);
-	printf("ID: OPCODE: 0x%x \n", CURRENT_STATE.ID_EX_OPCODE);
 
 
 	if (OPCODE(instr) == 0x0) {
@@ -261,11 +259,21 @@ void ID_Stage() {
 
 		// LW MEM forwarding requires 1 cycle stall
 		if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
-			lwFlag = TRUE;
+			//printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+			//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
+
+			// 한 cycle 기다린 뒤 Forward
+			if (CURRENT_STATE.EX_MEM_RD == RS(instr))
+				lwFlag = 1;
+			if (CURRENT_STATE.EX_MEM_RD == RT(instr))
+				lwFlag = 2;
+			
 			return;
 		}
 		else {
 			// Type-R Forwarding. Compare with ex-cycle EX stage.
+			//printf("EX- forwarding check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+			//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
 			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
 				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
@@ -282,7 +290,7 @@ void ID_Stage() {
 			}
 			if (CURRENT_STATE.MEM_WB_RD == RT(instr)) {
 				CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_ALU_OUT;
-				printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+				printf("ID: MEM Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
 			}
 		}
 	}
@@ -341,19 +349,29 @@ void EX_Stage() {
 	}
 
 	if (!CURRENT_STATE.ID_EX_NPC) {
-		// 가져온 게 nop일 때
-		// 그대로 0을 전달해 준다
+		// pass NOP to next stage
+
 		CURRENT_STATE.PIPE[EX_STAGE] = 0;
 		CURRENT_STATE.EX_MEM_NPC = 0;
 		return;
 	}
 
-	// LW Forwarding으로 인해 ID 가 잠겨 있다면
-	// bubble을 만든다
+	// LW Forwarding. create bubble when ID stage is locked
 	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]){
 		CURRENT_STATE.PIPE[EX_STAGE] = 0;
 		CURRENT_STATE.EX_MEM_NPC = 0;
 		return;
+	}
+
+	// LW stall- Forwarding check.
+	if (lwMemFlag) {
+		if(lwMemFlag == 1)
+			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_MEM_OUT;
+		else if(lwMemFlag == 2)
+			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_MEM_OUT;
+
+		lwMemFlag = FALSE;
+		printf("ID: LW Forwarding");
 	}
 
 	CURRENT_STATE.PIPE[EX_STAGE] = CURRENT_STATE.ID_EX_NPC;
@@ -486,8 +504,8 @@ void MEM_Stage() {
 	}
 
 	if (!CURRENT_STATE.EX_MEM_NPC) {
-		// 가져온 게 nop일 때
-		// 그대로 0을 전달해 준다
+		// pass NOP to next stage
+
 		CURRENT_STATE.PIPE[MEM_STAGE] = 0;
 		CURRENT_STATE.MEM_WB_NPC = 0;
 		return;
@@ -506,7 +524,7 @@ void MEM_Stage() {
 		// TYPE R
 		CURRENT_STATE.MEM_WB_RD = CURRENT_STATE.EX_MEM_RD; // pass RD to WB
 
-		switch (CURRENT_STATE.EX_MEM_FUNCT) { // 고쳐야 함
+		switch (CURRENT_STATE.EX_MEM_FUNCT) { 
 		case 0x21:	// ADD U
 		case 0x24:	// AND
 		case 0x27:	// NOR
@@ -548,7 +566,7 @@ void MEM_Stage() {
 			break;
 		case 0x2b:		//(0x101011)SW
 			// RT의 값을 메모리에 쓴다
-			mem_write_32(CURRENT_STATE.EX_MEM_ALU_OUT, CURRENT_STATE.ID_EX_RT); // 고쳐야 함
+			mem_write_32(CURRENT_STATE.EX_MEM_ALU_OUT, CURRENT_STATE.ID_EX_RT); // 고쳐야 함. 그런가?
 
 			break;
 
@@ -595,7 +613,7 @@ void WB_Stage() {
 	if (CURRENT_STATE.MEM_WB_OPCODE == 0x0) {
 		// TYPE R
 
-		switch (CURRENT_STATE.ID_EX_FUNCT) { // 고쳐야 함
+		switch (CURRENT_STATE.MEM_WB_FUNCT) { // 고쳐야 함
 		case 0x21:	// ADD U
 		case 0x24:	// AND
 		case 0x27:	// NOR
