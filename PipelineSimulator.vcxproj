@@ -134,6 +134,7 @@
     <ClCompile Include="util.c" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="sample_input\beq_test.s" />
     <None Include="sample_input\double_loop.s" />
     <None Include="sample_input\example01.s" />
     <None Include="sample_input\example02.s" />

@@ -191,12 +191,28 @@ void IF_Stage() {
 		CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
 		return;
 	}
-	CURRENT_STATE.PIPE[IF_STAGE] = CURRENT_STATE.PC;
-	CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
-	CURRENT_STATE.IF_ID_INST = get_inst_info(CURRENT_STATE.PC);
 
-	CURRENT_STATE.PC += 4;
+	if (get_inst_info(CURRENT_STATE.PC)->opcode < 0) {
+		// 명령어 끝 확인(임시) 가상환경에서는 안 될 수도 있음
+		FETCH_BIT = FALSE;
+		if (CURRENT_STATE.PIPE[MEM_STAGE] == 0) {
+			// 파이프라인이 비워질 예정. 실행 종료.
+			RUN_BIT = FALSE;
+		}
+	}
 
+	if (FETCH_BIT) {
+		CURRENT_STATE.PIPE[IF_STAGE] = CURRENT_STATE.PC;
+		CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
+		CURRENT_STATE.IF_ID_INST = get_inst_info(CURRENT_STATE.PC);
+
+		CURRENT_STATE.PC += 4;
+	}
+	else {
+		// No more instruction to fetch
+		CURRENT_STATE.PIPE[IF_STAGE] = 0;
+		CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
+	}
 }
 
 // Instruction decode & register read 
@@ -246,7 +262,6 @@ void ID_Stage() {
 		// LW MEM forwarding requires 1 cycle stall
 		if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
 			lwFlag = TRUE;
-
 			return;
 		}
 		else {
@@ -255,9 +270,19 @@ void ID_Stage() {
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
 				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
-			else if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
+			if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
 				CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
 				printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+			}
+
+			// Compare with ex-ex-cycle MEM stage
+			if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
+				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
+				printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			}
+			if (CURRENT_STATE.MEM_WB_RD == RT(instr)) {
+				CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_ALU_OUT;
+				printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
 			}
 		}
 	}
@@ -284,6 +309,11 @@ void ID_Stage() {
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
 				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
+			if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
+
+				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
+				printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			}
 			break;
 
 			// TYPE J
@@ -293,7 +323,7 @@ void ID_Stage() {
 			break;
 
 		default:
-			//RUN_BIT = FALSE;
+			//FETCH_BIT = FALSE;
 			break;
 		}
 	}

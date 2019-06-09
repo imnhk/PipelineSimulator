@@ -97,5 +97,8 @@
     <None Include="sample_output\various_inst">
       <Filter>리소스 파일</Filter>
     </None>
+    <None Include="sample_input\beq_test.s">
+      <Filter>리소스 파일</Filter>
+    </None>
   </ItemGroup>
 </Project>
