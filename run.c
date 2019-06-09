@@ -24,17 +24,26 @@ instruction* get_inst_info(uint32_t pc) {
     return &INST_INFO[(pc - MEM_TEXT_START) >> 2];
 }
 
-// Stall: Set IF_ID instruction register to 000...000 (SLL $0 $0 0)
-void stall() {
-	instruction nop;
-	nop.opcode = 0;
-	nop.value = 0;
-	CURRENT_STATE.IF_ID_INST = &nop;
-	CURRENT_STATE.IF_ID_NPC = 0;
-	CURRENT_STATE.PIPE[IF_STAGE] = 0;
+
+
+
+// Stall IF, ID for 1 cycle for LW forwarding
+int lwFlag = FALSE;
+void LWstall(int flag) {
+	if (!flag)
+		return;
+	printf("@@@: LW stalling \n");
+
+	CURRENT_STATE.REGS_LOCK[IF_STAGE] = TRUE;
+	CURRENT_STATE.REGS_LOCK[ID_STAGE] = TRUE;
+	//CURRENT_STATE.REGS_LOCK[EX_STAGE] = TRUE;
+
+	// Create bubble at EX_MEM buffer
+
+	lwFlag = FALSE;
 	return;
 }
-int stallFlag = 0;
+
 
 /***************************************************************/
 /*                                                             */
@@ -47,16 +56,13 @@ void process_instruction()
 {
 	/** Implement this function */
 
-	if (stallFlag) {
-		stall();
-		stallFlag = 0;
-	}
-	
 	WB_Stage();
 	MEM_Stage();
 	EX_Stage();
 	ID_Stage();
 	IF_Stage();
+
+	LWstall(lwFlag);
 
 	/*
 	if (OPCODE(instr) == 0x0) {
@@ -181,17 +187,14 @@ void process_instruction()
 void IF_Stage() {
 	if (CURRENT_STATE.REGS_LOCK[IF_STAGE]) {
 		// IF stage is locked
-		CURRENT_STATE.PIPE[IF_STAGE] = 0;
+		CURRENT_STATE.REGS_LOCK[IF_STAGE] = FALSE; // Stall for 1 cycle
+		CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
 		return;
 	}
-	//CURRENT_STATE.REGS_LOCK[IF_STAGE] = 1; // LOCK
-
-
 	CURRENT_STATE.PIPE[IF_STAGE] = CURRENT_STATE.PC;
-
+	CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
 	CURRENT_STATE.IF_ID_INST = get_inst_info(CURRENT_STATE.PC);
 
-	CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PC;
 	CURRENT_STATE.PC += 4;
 
 }
@@ -200,6 +203,14 @@ void IF_Stage() {
 
 // addu 0 0 0 >> nop, create bubble
 void ID_Stage() {
+	// ID stage is locked
+	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]) {
+		CURRENT_STATE.REGS_LOCK[ID_STAGE] = FALSE;
+		CURRENT_STATE.ID_EX_NPC = CURRENT_STATE.PIPE[ID_STAGE];
+
+		return;
+	}
+	
 	if (!CURRENT_STATE.IF_ID_NPC) {
 		// 가져온 게 nop일 때
 		// 그대로 0을 전달해 준다
@@ -208,22 +219,13 @@ void ID_Stage() {
 		return;
 	}
 
-	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]) {
-		// ID stage is locked
-		CURRENT_STATE.PIPE[ID_STAGE] = 0;
-
-		// Flush ID_EX registers
-		CURRENT_STATE.ID_EX_RS = 0;
-		return;
-	}
-	//CURRENT_STATE.REGS_LOCK[ID_STAGE] = 1; // LOCK
-
 	CURRENT_STATE.PIPE[ID_STAGE] = CURRENT_STATE.IF_ID_NPC;
-
 
 	// Decode this instruction
 	instruction* instr = CURRENT_STATE.IF_ID_INST;
 	CURRENT_STATE.ID_EX_OPCODE = OPCODE(instr);
+	printf("ID: OPCODE: 0x%x \n", CURRENT_STATE.ID_EX_OPCODE);
+
 
 	if (OPCODE(instr) == 0x0) {
 		// TYPE R
@@ -233,21 +235,29 @@ void ID_Stage() {
 		CURRENT_STATE.ID_EX_SHAMT = SHAMT(instr);
 		CURRENT_STATE.ID_EX_FUNCT = FUNC(instr);
 
-		// Type-R Forwarding. Compare with ex-cycle EX stage.
-		if (CURRENT_STATE.EX_MEM_RD == CURRENT_STATE.ID_EX_RS) {
-			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
-			printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
-		}
-		if (CURRENT_STATE.EX_MEM_RD == CURRENT_STATE.ID_EX_RT) {
-			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
-			printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
-		}
-
-		// NOP. ADDU 0 0 0.
+		// NOP Check. ADDU 0 0 0.
 		if (FUNC(instr) == 0x21) {
 			if (RS(instr) == 0 && RT(instr) == 0 && RD(instr) == 0) {
 				// Its bubble. Clear ID_EX buffer
 				CURRENT_STATE.PIPE[ID_STAGE] = 0;
+			}
+		}
+
+		// LW MEM forwarding requires 1 cycle stall
+		if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
+			lwFlag = TRUE;
+
+			return;
+		}
+		else {
+			// Type-R Forwarding. Compare with ex-cycle EX stage.
+			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
+				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
+				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			}
+			else if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
+				CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
+				printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
 			}
 		}
 	}
@@ -268,13 +278,12 @@ void ID_Stage() {
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
 
 			// Type-I Forwarding. Compare with ex-cycle EX stage.
-			printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
-
+			//printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
 			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
+
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
 				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
-
 			break;
 
 			// TYPE J
@@ -294,6 +303,13 @@ void ID_Stage() {
 
 // Execute operation or calculate address 
 void EX_Stage() {
+
+	// EX_STAGE is locked
+	if (CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
+		CURRENT_STATE.REGS_LOCK[EX_STAGE] = FALSE;
+		return;
+	}
+
 	if (!CURRENT_STATE.ID_EX_NPC) {
 		// 가져온 게 nop일 때
 		// 그대로 0을 전달해 준다
@@ -301,12 +317,14 @@ void EX_Stage() {
 		CURRENT_STATE.EX_MEM_NPC = 0;
 		return;
 	}
-	if (CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
-		// EX_STAGE is locked
+
+	// LW Forwarding으로 인해 ID 가 잠겨 있다면
+	// bubble을 만든다
+	if (CURRENT_STATE.REGS_LOCK[ID_STAGE]){
 		CURRENT_STATE.PIPE[EX_STAGE] = 0;
+		CURRENT_STATE.EX_MEM_NPC = 0;
 		return;
 	}
-	//CURRENT_STATE.REGS_LOCK[EX_STAGE] = 1; // LOCK
 
 	CURRENT_STATE.PIPE[EX_STAGE] = CURRENT_STATE.ID_EX_NPC;
 
@@ -428,6 +446,15 @@ void EX_Stage() {
 
 // Access memory operand 
 void MEM_Stage() {
+
+	// MEM_STAGE is locked
+	if (CURRENT_STATE.REGS_LOCK[MEM_STAGE]) {
+		CURRENT_STATE.REGS_LOCK[MEM_STAGE] = FALSE;
+		//CURRENT_STATE.PIPE[MEM_STAGE] = 0;
+		//CURRENT_STATE.MEM_WB_NPC = 0;
+		return;
+	}
+
 	if (!CURRENT_STATE.EX_MEM_NPC) {
 		// 가져온 게 nop일 때
 		// 그대로 0을 전달해 준다
@@ -435,12 +462,6 @@ void MEM_Stage() {
 		CURRENT_STATE.MEM_WB_NPC = 0;
 		return;
 	}
-	if (CURRENT_STATE.REGS_LOCK[MEM_STAGE]) {
-		// MEM_STAGE is locked
-		CURRENT_STATE.PIPE[MEM_STAGE] = 0;
-		return;
-	}
-	//CURRENT_STATE.REGS_LOCK[MEM_STAGE] = 1; // LOCK
 
 
 	CURRENT_STATE.PIPE[MEM_STAGE] = CURRENT_STATE.EX_MEM_NPC;
@@ -530,9 +551,11 @@ void WB_Stage() {
 		CURRENT_STATE.PIPE[WB_STAGE] = 0;
 		return;
 	}
+
+
+	// WB_STAGE is locked
 	if (CURRENT_STATE.REGS_LOCK[WB_STAGE]) {
-		// WB_STAGE is locked
-		CURRENT_STATE.PIPE[WB_STAGE] = 0;
+		CURRENT_STATE.REGS_LOCK[WB_STAGE] = FALSE;
 		return;
 	}
 	//CURRENT_STATE.REGS_LOCK[WB_STAGE] = 1; // LOCK
