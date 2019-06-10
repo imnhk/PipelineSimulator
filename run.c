@@ -194,18 +194,19 @@ void IF_Stage() {
 		return;
 	}
 
+	//printf("IF OPCODE: %d\n", get_inst_info(CURRENT_STATE.PC)->opcode);
 	if (get_inst_info(CURRENT_STATE.PC)->opcode < 0) {
 		// 명령어 끝 확인(임시) 가상환경에서는 안 될 수도 있음
 		FETCH_BIT = FALSE;
-		if (CURRENT_STATE.PIPE[MEM_STAGE] == 0) {
-			// Pipeline to be empty
-			RUN_BIT = FALSE;
-		}
+	}
+	if (!FETCH_BIT && CURRENT_STATE.PIPE[MEM_STAGE] == 0) {
+		// Pipeline to be empty
+		RUN_BIT = FALSE;
 	}
 
 	if (FETCH_BIT) {
 		CURRENT_STATE.PIPE[IF_STAGE] = CURRENT_STATE.PC;
-		CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PIPE[IF_STAGE];
+		CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PC;
 		CURRENT_STATE.IF_ID_INST = get_inst_info(CURRENT_STATE.PC);
 
 		CURRENT_STATE.PC += 4;
@@ -287,13 +288,15 @@ void ID_Stage() {
 			//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
 
 			// 한 cycle 기다린 뒤 Forward
-			if (CURRENT_STATE.EX_MEM_RD == RS(instr))
+			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
 				lwMemFlag = 1;
-			if (CURRENT_STATE.EX_MEM_RD == RT(instr))
-				lwMemFlag = 2;
+				lwFlag = TRUE;
 
-			lwFlag = TRUE;
-			
+			}
+			if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
+				lwMemFlag = 2;
+				lwFlag = TRUE;
+			}
 			return;
 		}
 	}
@@ -313,19 +316,6 @@ void ID_Stage() {
 			CURRENT_STATE.ID_EX_RT = RT(instr);
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
 
-			// LW MEM forwarding requires 1 cycle stall
-			if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
-				//printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
-				//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
-
-				// 한 cycle 기다린 뒤 Forward
-				if (CURRENT_STATE.EX_MEM_RD == RS(instr))
-					lwMemFlag = 1;
-
-				lwFlag = TRUE;
-
-				return;
-			}
 
 			// Type-I Forwarding. Compare with ex-cycle EX stage.
 			//printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
@@ -340,6 +330,21 @@ void ID_Stage() {
 				//printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
 			break;
+
+			// LW MEM forwarding requires 1 cycle stall
+			if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
+				printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+				printf("RS: %d RT :%d\n", RS(instr), RT(instr));
+
+				// 한 cycle 기다린 뒤 Forward
+				if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
+					lwMemFlag = 1;
+					lwFlag = TRUE;
+				}
+
+
+				return;
+			}
 
 			// TYPE J
 		case 0x2:		//J
@@ -487,14 +492,14 @@ void EX_Stage() {
 			//printf("J :PC = PC[31:28] strcat [0x%x(imm) * 4] \n", TARGET(instr));
 			PC_addr = CURRENT_STATE.ID_EX_NPC;
 			PC_addr = PC_addr & 0xf0000000; //PC[31:28]
-			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4 + 4;
+			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4;
 
 			break;
 		case 0x3:		//JAL
 			//printf("JAL :R[31]=PC+4, J to 0x%x(imm)*4 \n", TARGET(instr));
 			PC_addr = CURRENT_STATE.ID_EX_NPC;
 			PC_addr = PC_addr & 0xf0000000; //PC[31:28]
-			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4 + 4;
+			CURRENT_STATE.JUMP_PC = PC_addr + MEM_TEXT_START + CURRENT_STATE.ID_EX_DEST * 4;
 			break;
 
 		default:
@@ -597,8 +602,9 @@ void MEM_Stage() {
 
 			break;
 		case 0x3:		//JAL
-			CURRENT_STATE.REGS[31] = CURRENT_STATE.EX_MEM_NPC;
+			CURRENT_STATE.REGS[31] = CURRENT_STATE.EX_MEM_NPC + 8;
 			CURRENT_STATE.PC = CURRENT_STATE.JUMP_PC;
+			//printf("MEM: JAL to 0x%x\n",CURRENT_STATE.PC);
 			break;
 
 		default:
