@@ -42,7 +42,7 @@ void LWstall(int flag) {
 	// Create bubble at EX_MEM buffer
 
 	lwFlag = FALSE;
-	lwMemFlag = TRUE;
+	//lwMemFlag = TRUE;
 	return;
 }
 
@@ -242,6 +242,7 @@ void ID_Stage() {
 
 
 	if (OPCODE(instr) == 0x0) {
+
 		// TYPE R
 		CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
 		CURRENT_STATE.ID_EX_RT = CURRENT_STATE.REGS[RT(instr)];
@@ -257,6 +258,29 @@ void ID_Stage() {
 			}
 		}
 
+
+		// Type-R Forwarding. Compare with ex-cycle EX stage.
+		//printf("EX- forwarding check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+		//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
+		if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
+			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
+			printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+		}
+		if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
+			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
+			printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+		}
+
+		// Compare with ex-ex-cycle MEM stage
+		if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
+			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
+			printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+		}
+		if (CURRENT_STATE.MEM_WB_RD == RT(instr)) {
+			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_ALU_OUT;
+			printf("ID: MEM Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+		}
+
 		// LW MEM forwarding requires 1 cycle stall
 		if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
 			//printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
@@ -264,34 +288,13 @@ void ID_Stage() {
 
 			// 한 cycle 기다린 뒤 Forward
 			if (CURRENT_STATE.EX_MEM_RD == RS(instr))
-				lwFlag = 1;
+				lwMemFlag = 1;
 			if (CURRENT_STATE.EX_MEM_RD == RT(instr))
-				lwFlag = 2;
+				lwMemFlag = 2;
+
+			lwFlag = TRUE;
 			
 			return;
-		}
-		else {
-			// Type-R Forwarding. Compare with ex-cycle EX stage.
-			//printf("EX- forwarding check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
-			//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
-			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
-				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
-				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
-			}
-			if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
-				CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
-				printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
-			}
-
-			// Compare with ex-ex-cycle MEM stage
-			if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
-				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
-				printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
-			}
-			if (CURRENT_STATE.MEM_WB_RD == RT(instr)) {
-				CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_ALU_OUT;
-				printf("ID: MEM Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
-			}
 		}
 	}
 	else {
@@ -310,17 +313,31 @@ void ID_Stage() {
 			CURRENT_STATE.ID_EX_RT = RT(instr);
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
 
+			// LW MEM forwarding requires 1 cycle stall
+			if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
+				//printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+				//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
+
+				// 한 cycle 기다린 뒤 Forward
+				if (CURRENT_STATE.EX_MEM_RD == RS(instr))
+					lwMemFlag = 1;
+
+				lwFlag = TRUE;
+
+				return;
+			}
+
 			// Type-I Forwarding. Compare with ex-cycle EX stage.
 			//printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
 			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
 
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
-				printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+				//printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
 			if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
 
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
-				printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+				//printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
 			break;
 
@@ -370,8 +387,9 @@ void EX_Stage() {
 		else if(lwMemFlag == 2)
 			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_MEM_OUT;
 
+		//printf("ID: LW Forwarding done, Flag %d \n", lwMemFlag);
+
 		lwMemFlag = FALSE;
-		printf("ID: LW Forwarding");
 	}
 
 	CURRENT_STATE.PIPE[EX_STAGE] = CURRENT_STATE.ID_EX_NPC;
@@ -403,10 +421,10 @@ void EX_Stage() {
 			CURRENT_STATE.EX_MEM_ALU_OUT = (CURRENT_STATE.ID_EX_RS < CURRENT_STATE.ID_EX_RT) ? 1 : 0;
 			break;
 		case 0x00:	// SLL
-			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS << CURRENT_STATE.ID_EX_SHAMT;
+			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RT << CURRENT_STATE.ID_EX_SHAMT;
 			break;
 		case 0x02:	// SRL
-			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS >> CURRENT_STATE.ID_EX_SHAMT;
+			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RT >> CURRENT_STATE.ID_EX_SHAMT;
 			break;
 		case 0x23:	// SUB U
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS - CURRENT_STATE.ID_EX_RT;
@@ -447,14 +465,12 @@ void EX_Stage() {
 		case 0x23:		//(0x100011)LW
 			//printf("LW :$%d = M[0x%8x + %d] \n", RT(instr), CURRENT_STATE.REGS[RS(instr)], IMM(instr));
 			//CURRENT_STATE.REGS[RT(instr)] = mem_read_32(CURRENT_STATE.REGS[RS(instr)] + IMM(instr));
-			// 접근할 메모리 주소(읽기)
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_IMM;
 			printf("EX: RS %d, IMM %x\n", CURRENT_STATE.ID_EX_RS, CURRENT_STATE.ID_EX_IMM);
 			break;
 		case 0x2b:		//(0x101011)SW
 			//printf("SW :M[0x%8x + %d] = $%d \n", CURRENT_STATE.REGS[RS(instr)], IMM(instr), RT(instr));
 			//mem_write_32(CURRENT_STATE.REGS[RS(instr)] + IMM(instr), CURRENT_STATE.REGS[RT(instr)]);
-			// 접근할 메모리 주소(쓰기)
 			CURRENT_STATE.EX_MEM_ALU_OUT = CURRENT_STATE.ID_EX_RS + CURRENT_STATE.ID_EX_IMM;
 			break;
 		case 0x4:		//(0x000100)BEQ
