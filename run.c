@@ -329,13 +329,27 @@ void ID_Stage() {
 			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
 			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.REGS[RT(instr)];
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
+
+			// Type-I Forwarding. Compare with ex-cycle EX stage.
+			printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
+			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
+
+				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
+				//printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			}
+			if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
+
+				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
+				//printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			}
+			break;
 			break;
 
+		case 0xb:		//(0x001011)SLTIU
 		case 0x9:		//(0x001001)ADDIU
 		case 0xc:		//(0x001100)ANDI
 		case 0xf:		//(0x001111)LUI, Load Upper Imm.
 		case 0xd:		//(0x001101)ORI
-		case 0xb:		//(0x001011)SLTIU
 		case 0x23:		//(0x100011)LW
 		case 0x2b:		//(0x101011)SW
 			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.REGS[RS(instr)];
@@ -507,17 +521,21 @@ void EX_Stage() {
 
 				// FLUSH
 				bpFlag = 2;
-				printf("BEQ FLUSH--- bpflag = %d\n", bpFlag);
+			}
+			else {
+				// No branch
+				CURRENT_STATE.EX_MEM_BR_TARGET = 0;
 			}
 			break;
 		case 0x5:		//(0x000101)BNE
-			printf("EX: BNE rs: %d, rt: %d \n", CURRENT_STATE.ID_EX_RS, CURRENT_STATE.ID_EX_RT);
 			if (CURRENT_STATE.ID_EX_RS != CURRENT_STATE.ID_EX_RT) {
 				CURRENT_STATE.EX_MEM_BR_TARGET = CURRENT_STATE.ID_EX_NPC + 4 * CURRENT_STATE.ID_EX_IMM;
 
 				// FLUSH
 				bpFlag = 2;
-				printf("BNE FLUSH--- bpflag = %d\n", bpFlag);
+			}
+			else {
+				CURRENT_STATE.EX_MEM_BR_TARGET = 0;
 			}
 			break;
 
@@ -624,7 +642,8 @@ void MEM_Stage() {
 
 		case 0x4:		//(0x000100)BEQ
 		case 0x5:		//(0x000101)BNE
-			CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
+			if(CURRENT_STATE.EX_MEM_BR_TARGET != 0)
+				CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
 			break;
 
 			// TYPE J
