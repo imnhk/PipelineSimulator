@@ -53,7 +53,7 @@ int lwMemFlag = FALSE;
 void LWstall(int flag) {
 	if (!flag) return;
 
-	printf("@@@: LW stalling \n");
+	//printf("@@@: LW stalling \n");
 
 	CURRENT_STATE.REGS_LOCK[IF_STAGE] = TRUE;
 	CURRENT_STATE.REGS_LOCK[ID_STAGE] = TRUE;
@@ -286,21 +286,21 @@ void ID_Stage() {
 		//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
 		if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
 			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
-			printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			//printf("ID: Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 		}
 		if (CURRENT_STATE.EX_MEM_RD == RT(instr)) {
 			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.EX_MEM_ALU_OUT;
-			printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+			//printf("ID: Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
 		}
 
 		// Compare with ex-ex-cycle MEM stage
 		if (CURRENT_STATE.MEM_WB_RD == RS(instr)) {
 			CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
-			printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
+			//printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 		}
 		if (CURRENT_STATE.MEM_WB_RD == RT(instr)) {
 			CURRENT_STATE.ID_EX_RT = CURRENT_STATE.MEM_WB_ALU_OUT;
-			printf("ID: MEM Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
+			//printf("ID: MEM Forwarding, RT is now 0x%x\n", CURRENT_STATE.ID_EX_RT);
 		}
 
 		// LW MEM forwarding requires 1 cycle stall
@@ -331,7 +331,7 @@ void ID_Stage() {
 			CURRENT_STATE.ID_EX_IMM = IMM(instr);
 
 			// Type-I Forwarding. Compare with ex-cycle EX stage.
-			printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
+			//printf("ID: Fw check, RD = %d, RS = %d\n", CURRENT_STATE.EX_MEM_RD, RS(instr));
 			if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
 
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.EX_MEM_ALU_OUT;
@@ -373,8 +373,8 @@ void ID_Stage() {
 
 			// LW MEM forwarding requires 1 cycle stall
 			if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
-				printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
-				printf("RS: %d RT :%d\n", RS(instr), RT(instr));
+				//printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+				//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
 
 				// 한 cycle 기다린 뒤 Forward
 				if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
@@ -693,7 +693,7 @@ void WB_Stage() {
 		case 0x02:	// SRL
 		case 0x23:	// SUB U
 			CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_RD] = CURRENT_STATE.MEM_WB_ALU_OUT;
-			printf("WB Type R: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_ALU_OUT);
+			//printf("WB Type R: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_ALU_OUT);
 			break;
 		case 0x08:	//JR
 			// empty
@@ -713,12 +713,12 @@ void WB_Stage() {
 		case 0xb:		//(0x001011)SLTIU
 		case 0xf:		//(0x001111)LUI, Load Upper Imm.
 			CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_RD] = CURRENT_STATE.MEM_WB_ALU_OUT;
-			printf("WB Type I: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_ALU_OUT);
+			//printf("WB Type I: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_ALU_OUT);
 			break;
 
 		case 0x23:		//(0x100011)LW
 			CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_RD] = CURRENT_STATE.MEM_WB_MEM_OUT;
-			printf("(WB) LW: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_MEM_OUT);
+			//printf("(WB) LW: reg[%d] is now 0x%x \n", CURRENT_STATE.MEM_WB_RD, CURRENT_STATE.MEM_WB_MEM_OUT);
 
 			break;
 		case 0x2b:		//(0x101011)SW

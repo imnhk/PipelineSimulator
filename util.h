@@ -56,6 +56,8 @@ typedef struct CPU_State_Struct {
 	uint32_t ID_EX_NPC;
 	uint32_t ID_EX_RS;
 	uint32_t ID_EX_RT;
+	uint32_t ID_EX_REG1;
+	uint32_t ID_EX_REG2;
 	
 	uint32_t ID_EX_RD;//
 	uint32_t ID_EX_SHAMT;//
