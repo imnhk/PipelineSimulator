@@ -217,7 +217,7 @@ void IF_Stage() {
 
 	//printf("IF OPCODE: %d\n", get_inst_info(CURRENT_STATE.PC)->opcode);
 	if (get_inst_info(CURRENT_STATE.PC)->opcode < 0) {
-		// 명령어 끝 확인(임시) 가상환경에서는 안 될 수도 있음
+		// 명령어 끝 확인(임시) 
 		FETCH_BIT = FALSE;
 	}
 	if (!FETCH_BIT && CURRENT_STATE.PIPE[MEM_STAGE] == 0) {
@@ -343,7 +343,6 @@ void ID_Stage() {
 				//printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
 			break;
-			break;
 
 		case 0xb:		//(0x001011)SLTIU
 		case 0x9:		//(0x001001)ADDIU
@@ -369,23 +368,20 @@ void ID_Stage() {
 				CURRENT_STATE.ID_EX_RS = CURRENT_STATE.MEM_WB_ALU_OUT;
 				//printf("ID: MEM Forwarding, RS is now 0x%x\n", CURRENT_STATE.ID_EX_RS);
 			}
-			break;
+			//break;
 
 			// LW MEM forwarding requires 1 cycle stall
 			if (CURRENT_STATE.EX_MEM_OPCODE == 0x23 && !CURRENT_STATE.REGS_LOCK[EX_STAGE]) {
-				//printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
-				//printf("RS: %d RT :%d\n", RS(instr), RT(instr));
+				printf("LW FW check EX_MEM RD: %d \n", CURRENT_STATE.EX_MEM_RD);
+				printf("RS: %d RT :%d\n", RS(instr), RT(instr));
 
 				// 한 cycle 기다린 뒤 Forward
 				if (CURRENT_STATE.EX_MEM_RD == RS(instr)) {
 					lwMemFlag = 1;
 					lwFlag = TRUE;
 				}
-
-
-				return;
 			}
-
+			break;
 			// TYPE J
 		case 0x2:		//J
 		case 0x3:		//JAL
